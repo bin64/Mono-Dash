@@ -342,7 +342,7 @@ class _ServerDetailPageState extends ConsumerState<ServerDetailPage> {
         ref.read(websitesControllerProvider.notifier).refresh();
         break;
       case 2:
-        ref.read(filesControllerProvider.notifier).refresh();
+        ref.read(filesControllerProvider.notifier).refresh(silent: true);
         break;
       case 3:
         ref.read(containerOverviewProvider.notifier).refresh();

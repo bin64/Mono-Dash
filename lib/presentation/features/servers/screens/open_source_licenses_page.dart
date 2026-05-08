@@ -1,13 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_tabler_icons/flutter_tabler_icons.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/localization/l10n_x.dart';
 import '../../../../core/network/app_user_agent.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../common/components/app_action_components.dart';
 import '../../../common/components/frosted_scaffold.dart';
+import '../../settings/providers/app_settings_provider.dart';
 
 class OpenSourceLicensesPage extends StatefulWidget {
   const OpenSourceLicensesPage({super.key});
@@ -17,6 +20,8 @@ class OpenSourceLicensesPage extends StatefulWidget {
 }
 
 class _OpenSourceLicensesPageState extends State<OpenSourceLicensesPage> {
+  static const _onePanelRepositoryUrl = 'https://github.com/1Panel-dev/1Panel';
+
   late final Future<_LicenseData> _licenseData = _loadLicenseData();
 
   @override
@@ -61,8 +66,12 @@ class _OpenSourceLicensesPageState extends State<OpenSourceLicensesPage> {
                       AppActionGroup(
                         children: [
                           AppActionRow(
-                            icon: TablerIcons.info_circle,
-                            iconColor: CupertinoColors.activeBlue,
+                            leading: _AppLicenseIcon(
+                              child: Image.asset(
+                                AppIconVariant.defaultIcon.assetPath,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                             title: AppUserAgent.displayName,
                             subtitle: Text(
                               l10n.settings_licenses_versionSubtitle(
@@ -74,6 +83,21 @@ class _OpenSourceLicensesPageState extends State<OpenSourceLicensesPage> {
                                 data.packages.length,
                               ),
                             ),
+                          ),
+                          AppActionRow(
+                            leading: _AppLicenseIcon(
+                              backgroundColor: CupertinoColors.activeBlue
+                                  .resolveFrom(context)
+                                  .withValues(alpha: 0.1),
+                              padding: const EdgeInsets.all(7),
+                              child: SvgPicture.asset(
+                                'assets/icons/1panel.svg',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            title: '1Panel',
+                            subtitle: const Text('1Panel-dev/1Panel'),
+                            onTap: () => _openUrl(_onePanelRepositoryUrl),
                           ),
                         ],
                       ),
@@ -147,6 +171,40 @@ class _OpenSourceLicensesPageState extends State<OpenSourceLicensesPage> {
         : '$version ($buildNumber)';
 
     return _LicenseData(versionText: versionText, packages: packages);
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+}
+
+class _AppLicenseIcon extends StatelessWidget {
+  const _AppLicenseIcon({
+    required this.child,
+    this.backgroundColor,
+    this.padding = EdgeInsets.zero,
+  });
+
+  final Widget child;
+  final Color? backgroundColor;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 36,
+      height: 36,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    );
   }
 }
 

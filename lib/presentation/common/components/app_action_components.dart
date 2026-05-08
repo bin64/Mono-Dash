@@ -78,6 +78,7 @@ class AppActionRow extends StatelessWidget {
     super.key,
     this.icon,
     this.iconColor,
+    this.leading,
     required this.title,
     required this.subtitle,
     this.enabled = true,
@@ -88,6 +89,7 @@ class AppActionRow extends StatelessWidget {
 
   final IconData? icon;
   final Color? iconColor;
+  final Widget? leading;
   final String title;
   final Widget subtitle;
   final bool enabled;
@@ -101,14 +103,10 @@ class AppActionRow extends StatelessWidget {
         ? CupertinoColors.systemRed.resolveFrom(context)
         : AppColors.label(context);
 
-    final rowContent = Opacity(
-      opacity: enabled ? 1.0 : 0.5,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            if (icon != null && iconColor != null) ...[
-              Container(
+    final leadingWidget =
+        leading ??
+        (icon != null && iconColor != null
+            ? Container(
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
@@ -116,7 +114,17 @@ class AppActionRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, color: iconColor, size: 18),
-              ),
+              )
+            : null);
+
+    final rowContent = Opacity(
+      opacity: enabled ? 1.0 : 0.5,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            if (leadingWidget != null) ...[
+              leadingWidget,
               const SizedBox(width: 14),
             ],
             Expanded(
@@ -148,7 +156,9 @@ class AppActionRow extends StatelessWidget {
                 Icon(
                   TablerIcons.chevron_right,
                   size: 14,
-                  color: AppColors.tertiaryLabel(context).withValues(alpha: 0.5),
+                  color: AppColors.tertiaryLabel(
+                    context,
+                  ).withValues(alpha: 0.5),
                 ),
           ],
         ),

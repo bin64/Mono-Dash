@@ -195,13 +195,16 @@ class FilesController extends _$FilesController {
   }
 
   /// 刷新当前目录。
-  Future<void> refresh() async {
+  Future<void> refresh({bool silent = false}) async {
     final current = state.valueOrNull;
     if (current == null) return;
+    if (silent && current.isLoading) return;
 
     final path = current.currentPath;
     _pendingPath = path;
-    state = AsyncData(current.copyWith(isLoading: true));
+    if (!silent) {
+      state = AsyncData(current.copyWith(isLoading: true));
+    }
 
     final previous = current;
     final nextState = await AsyncValue.guard(() async {
@@ -232,6 +235,7 @@ class FilesController extends _$FilesController {
 
     if (nextState.hasError) {
       state = AsyncData(previous);
+      if (silent) return;
       final error = nextState.error;
       final message = switch (error) {
         AppNetworkException(:final message) => message,
