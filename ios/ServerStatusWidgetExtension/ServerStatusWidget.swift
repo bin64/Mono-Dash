@@ -13,6 +13,14 @@ private let errorsKey = "server_widget_errors"
 private let settingsKey = "server_widget_settings"
 private let widgetKind = "ServerStatusWidget"
 
+private func l10n(_ key: String) -> String {
+  NSLocalizedString(key, bundle: .main, comment: "")
+}
+
+private func l10nFormat(_ key: String, _ arguments: CVarArg...) -> String {
+  String(format: l10n(key), locale: Locale.current, arguments: arguments)
+}
+
 struct WidgetServer: Codable, Identifiable, Hashable {
   let id: Int
   let name: String?
@@ -55,6 +63,7 @@ struct ServerSnapshot: Codable, Identifiable {
   let title: String
   let subtitle: String
   let osName: String
+  let uptimeSeconds: Int?
   let cpuPercent: Double
   let memoryPercent: Double
   let diskPercent: Double?
@@ -219,11 +228,11 @@ final class DashboardFetcher: NSObject, URLSessionDelegate {
 enum ServerWidgetFetcher {
   static func fetch(server: WidgetServer) async -> ServerSnapshot? {
     guard let baseURL = server.baseURL else {
-      WidgetStore.saveError("Invalid server URL", serverId: server.id)
+      WidgetStore.saveError(l10n("widget.error.invalid_url"), serverId: server.id)
       return WidgetStore.selectedSnapshot(id: String(server.id)).1
     }
     guard let apiKey = WidgetStore.apiKey(serverId: server.id), !apiKey.isEmpty else {
-      WidgetStore.saveError("Missing API key. Open Mono Dash once.", serverId: server.id)
+      WidgetStore.saveError(l10n("widget.error.missing_api_key"), serverId: server.id)
       return WidgetStore.selectedSnapshot(id: String(server.id)).1
     }
 
@@ -376,6 +385,7 @@ enum ServerWidgetFetcher {
       title: title,
       subtitle: subtitle.isEmpty ? "\(server.host):\(server.port)" : subtitle,
       osName: osName(base),
+      uptimeSeconds: int(current["uptime"]),
       cpuPercent: double(current["cpuUsedPercent"]),
       memoryPercent: double(current["memoryUsedPercent"]),
       diskPercent: diskPercent,
@@ -476,13 +486,15 @@ enum FetchError: Error {
     case .httpStatus(let code):
       return "HTTP \(code)"
     case .apiEnvelope(let code, let message):
-      return message.isEmpty ? "API code \(code)" : message
+      return message.isEmpty ? l10nFormat("widget.error.api_code", code) : message
     }
   }
 }
 
 struct ServerEntity: AppEntity, Identifiable {
-  static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Server")
+  static var typeDisplayRepresentation = TypeDisplayRepresentation(
+    name: LocalizedStringResource("widget.intent.server.type")
+  )
   static var defaultQuery = ServerEntityQuery()
 
   let id: String
@@ -511,22 +523,36 @@ struct ServerEntityQuery: EntityStringQuery {
   }
 }
 
-struct ServerSelectionIntent: WidgetConfigurationIntent {
-  static var title: LocalizedStringResource = "Server"
-  static var description = IntentDescription("Choose the server shown by the widget.")
+enum ServerWidgetCardStyle: String, AppEnum {
+  case simple
 
-  @Parameter(title: "Server")
+  static var typeDisplayRepresentation = TypeDisplayRepresentation(
+    name: LocalizedStringResource("widget.card.style.type")
+  )
+  static var caseDisplayRepresentations: [ServerWidgetCardStyle: DisplayRepresentation] = [
+    .simple: DisplayRepresentation(title: LocalizedStringResource("widget.card.style.simple"))
+  ]
+}
+
+struct ServerSelectionIntent: WidgetConfigurationIntent {
+  static var title = LocalizedStringResource("widget.intent.server.title")
+  static var description = IntentDescription("widget.intent.server.description")
+
+  @Parameter(title: "widget.intent.server.parameter")
   var server: ServerEntity?
 
+  @Parameter(title: "widget.intent.style.parameter", default: .simple)
+  var cardStyle: ServerWidgetCardStyle
+
   static var parameterSummary: some ParameterSummary {
-    Summary("Show \(\.$server)")
+    Summary("Show \(\.$server) as \(\.$cardStyle)")
   }
 }
 
 struct RefreshServerIntent: AppIntent {
-  static var title: LocalizedStringResource = "Refresh Server"
+  static var title = LocalizedStringResource("widget.intent.refresh.title")
 
-  @Parameter(title: "Server ID")
+  @Parameter(title: "widget.intent.refresh.server_id")
   var serverId: String
 
   init() {
@@ -551,6 +577,7 @@ struct ServerEntry: TimelineEntry {
   let server: WidgetServer?
   let snapshot: ServerSnapshot?
   let errorMessage: String?
+  let cardStyle: ServerWidgetCardStyle
 }
 
 struct ServerStatusProvider: AppIntentTimelineProvider {
@@ -579,6 +606,7 @@ struct ServerStatusProvider: AppIntentTimelineProvider {
         title: "Mono Dash",
         subtitle: "Ubuntu  |  10.0.0.2",
         osName: "Ubuntu",
+        uptimeSeconds: 183_600,
         cpuPercent: 24,
         memoryPercent: 58,
         diskPercent: 43,
@@ -594,7 +622,8 @@ struct ServerStatusProvider: AppIntentTimelineProvider {
         latencyMs: 86,
         updatedAt: Date()
       ),
-      errorMessage: nil
+      errorMessage: nil,
+      cardStyle: .simple
     )
   }
 
@@ -603,7 +632,13 @@ struct ServerStatusProvider: AppIntentTimelineProvider {
     in context: Context
   ) async -> ServerEntry {
     guard let server = WidgetStore.selectedServer(id: configuration.server?.id) else {
-      return ServerEntry(date: Date(), server: nil, snapshot: nil, errorMessage: nil)
+      return ServerEntry(
+        date: Date(),
+        server: nil,
+        snapshot: nil,
+        errorMessage: nil,
+        cardStyle: configuration.cardStyle
+      )
     }
     let snapshot = context.isPreview
       ? WidgetStore.selectedSnapshot(id: String(server.id)).1
@@ -612,7 +647,8 @@ struct ServerStatusProvider: AppIntentTimelineProvider {
       date: Date(),
       server: server,
       snapshot: snapshot,
-      errorMessage: WidgetStore.selectedError(id: String(server.id))
+      errorMessage: WidgetStore.selectedError(id: String(server.id)),
+      cardStyle: configuration.cardStyle
     )
   }
 
@@ -622,7 +658,15 @@ struct ServerStatusProvider: AppIntentTimelineProvider {
   ) async -> Timeline<ServerEntry> {
     guard let server = WidgetStore.selectedServer(id: configuration.server?.id) else {
       return Timeline(
-        entries: [ServerEntry(date: Date(), server: nil, snapshot: nil, errorMessage: nil)],
+        entries: [
+          ServerEntry(
+            date: Date(),
+            server: nil,
+            snapshot: nil,
+            errorMessage: nil,
+            cardStyle: configuration.cardStyle
+          )
+        ],
         policy: .after(Date().addingTimeInterval(900))
       )
     }
@@ -632,7 +676,8 @@ struct ServerStatusProvider: AppIntentTimelineProvider {
       date: Date(),
       server: server,
       snapshot: snapshot,
-      errorMessage: WidgetStore.selectedError(id: String(server.id))
+      errorMessage: WidgetStore.selectedError(id: String(server.id)),
+      cardStyle: configuration.cardStyle
     )
     return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(900)))
   }
@@ -645,7 +690,10 @@ struct ServerStatusWidgetEntryView: View {
   var body: some View {
     Group {
       if let snapshot = entry.snapshot {
-        serverCard(snapshot)
+        switch entry.cardStyle {
+        case .simple:
+          simpleServerCard(snapshot)
+        }
       } else if let server = entry.server {
         fallbackCard(server, errorMessage: entry.errorMessage)
       } else {
@@ -655,45 +703,35 @@ struct ServerStatusWidgetEntryView: View {
     .containerBackground(.background, for: .widget)
   }
 
-  private func serverCard(_ snapshot: ServerSnapshot) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      header(snapshot)
+  private func simpleServerCard(_ snapshot: ServerSnapshot) -> some View {
+    let isSmall = family == .systemSmall
+    return VStack(alignment: .leading, spacing: isSmall ? 6 : 11) {
+      simpleHeader(snapshot)
       metricRows(snapshot)
-      if family != .systemSmall {
-        Divider()
-        trafficRow(snapshot)
-      }
-      Spacer(minLength: 0)
-      HStack {
-        Text(snapshot.updatedAt, style: .time)
-          .font(.caption2.weight(.medium))
-          .foregroundStyle(.secondary)
-        Spacer()
-        Button(intent: RefreshServerIntent(serverId: String(snapshot.id))) {
-          Image(systemName: "arrow.clockwise")
-            .font(.caption.weight(.bold))
-        }
-        .buttonStyle(.plain)
-      }
+      Divider()
+      trafficTotalsRow(snapshot)
     }
-    .padding(16)
+    .padding(.horizontal, isSmall ? 12 : 16)
+    .padding(.top, isSmall ? 10 : 18)
+    .padding(.bottom, isSmall ? 10 : 16)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
   }
 
   private func fallbackCard(_ server: WidgetServer, errorMessage: String?) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       header(
         title: server.title,
-        subtitle: "\(server.host):\(server.port)",
+        subtitle: l10n("widget.fallback.waiting"),
         osName: "Linux",
         latencyMs: nil
       )
-      Text(errorMessage ?? (WidgetStore.apiKey(serverId: server.id) == nil ? "Open Mono Dash once to enable widget refresh." : "Tap refresh to fetch this server."))
+      Text(errorMessage ?? (WidgetStore.apiKey(serverId: server.id) == nil ? l10n("widget.fallback.open_app") : l10n("widget.fallback.tap_refresh")))
         .font(.footnote.weight(.medium))
         .foregroundStyle(.secondary)
         .lineLimit(3)
       Spacer(minLength: 0)
       Button(intent: RefreshServerIntent(serverId: String(server.id))) {
-        Label("Refresh", systemImage: "arrow.clockwise")
+        Label(l10n("widget.action.refresh"), systemImage: "arrow.clockwise")
           .font(.caption.weight(.semibold))
       }
       .buttonStyle(.bordered)
@@ -706,9 +744,9 @@ struct ServerStatusWidgetEntryView: View {
       Image(systemName: "server.rack")
         .font(.title2.weight(.semibold))
         .foregroundStyle(.secondary)
-      Text("No Server")
+      Text(l10n("widget.empty.title"))
         .font(.headline)
-      Text("Add a server in Mono Dash.")
+      Text(l10n("widget.empty.subtitle"))
         .font(.footnote.weight(.medium))
         .foregroundStyle(.secondary)
       Spacer(minLength: 0)
@@ -716,12 +754,13 @@ struct ServerStatusWidgetEntryView: View {
     .padding(16)
   }
 
-  private func header(_ snapshot: ServerSnapshot) -> some View {
+  private func simpleHeader(_ snapshot: ServerSnapshot) -> some View {
     header(
       title: snapshot.title,
-      subtitle: snapshot.subtitle,
+      subtitle: simpleSubtitle(snapshot),
       osName: snapshot.osName,
-      latencyMs: snapshot.latencyMs
+      latencyMs: snapshot.latencyMs,
+      serverId: snapshot.id
     )
   }
 
@@ -729,23 +768,22 @@ struct ServerStatusWidgetEntryView: View {
     title: String,
     subtitle: String,
     osName: String,
-    latencyMs: Int?
+    latencyMs: Int?,
+    serverId: Int? = nil
   ) -> some View {
-    HStack(spacing: 10) {
-      ZStack {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
-          .fill(Color.accentColor.opacity(0.12))
-        Text(osInitial(osName))
-          .font(.caption.weight(.bold))
-          .foregroundStyle(Color.accentColor)
-      }
-      .frame(width: 34, height: 34)
+    let isSmall = family == .systemSmall
+    let resolvedSubtitle = isSmall && latencyMs != nil
+      ? "\(subtitle.isEmpty ? "--" : subtitle) · \(latencyMs!)ms"
+      : subtitle
+
+    return HStack(spacing: 10) {
+      osIcon(osName)
 
       VStack(alignment: .leading, spacing: 3) {
         Text(title)
           .font(.headline.weight(.bold))
           .lineLimit(1)
-        Text(subtitle.isEmpty ? "--" : subtitle)
+        Text(resolvedSubtitle.isEmpty ? "--" : resolvedSubtitle)
           .font(.caption2.weight(.medium))
           .foregroundStyle(.secondary)
           .lineLimit(1)
@@ -753,7 +791,7 @@ struct ServerStatusWidgetEntryView: View {
 
       Spacer(minLength: 0)
 
-      if let latencyMs {
+      if let latencyMs, !isSmall {
         Text("\(latencyMs)ms")
           .font(.caption2.weight(.bold))
           .foregroundStyle(latencyMs > 500 ? .orange : .green)
@@ -761,15 +799,26 @@ struct ServerStatusWidgetEntryView: View {
           .padding(.vertical, 4)
           .background((latencyMs > 500 ? Color.orange : Color.green).opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
       }
+
+      if let serverId {
+        Button(intent: RefreshServerIntent(serverId: String(serverId))) {
+          Image(systemName: "arrow.clockwise")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.secondary)
+            .frame(width: 24, height: 24)
+            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+      }
     }
   }
 
   private func metricRows(_ snapshot: ServerSnapshot) -> some View {
-    VStack(spacing: 8) {
-      metric(label: "CPU", value: snapshot.cpuPercent, tint: .blue)
-      metric(label: "MEM", value: snapshot.memoryPercent, tint: .purple)
+    VStack(spacing: family == .systemSmall ? 4 : 8) {
+      metric(label: "CPU", value: snapshot.cpuPercent, tint: usageColor(snapshot.cpuPercent))
+      metric(label: l10n("widget.metric.memory"), value: snapshot.memoryPercent, tint: usageColor(snapshot.memoryPercent))
       if let diskPercent = snapshot.diskPercent {
-        metric(label: "DISK", value: diskPercent, tint: .orange)
+        metric(label: l10n("widget.metric.disk"), value: diskPercent, tint: usageColor(diskPercent))
       }
     }
   }
@@ -795,34 +844,73 @@ struct ServerStatusWidgetEntryView: View {
     }
   }
 
-  private func trafficRow(_ snapshot: ServerSnapshot) -> some View {
-    HStack {
-      traffic("Up", snapshot.uploadBytesPerSecond)
-      traffic("Down", snapshot.downloadBytesPerSecond)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(bytes(snapshot.totalTrafficBytes))
-          .font(.callout.monospacedDigit().weight(.bold))
-        Text("Total")
-          .font(.caption2.weight(.medium))
-          .foregroundStyle(.secondary)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
+  private func trafficTotalsRow(_ snapshot: ServerSnapshot) -> some View {
+    HStack(spacing: 8) {
+      trafficTotal(l10n("widget.traffic.up"), snapshot.netBytesSent, systemImage: "arrow.up")
+      separatorDot
+      trafficTotal(l10n("widget.traffic.down"), snapshot.netBytesRecv, systemImage: "arrow.down")
+      separatorDot
+      trafficTotal(l10n("widget.traffic.total"), snapshot.totalTrafficBytes, systemImage: "sum")
     }
+    .lineLimit(1)
+    .minimumScaleFactor(0.82)
   }
 
-  private func traffic(_ label: String, _ value: Double) -> some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text("\(bytes(Int64(value)))/s")
-        .font(.callout.monospacedDigit().weight(.bold))
-      Text(label)
-        .font(.caption2.weight(.medium))
+  private func trafficTotal(
+    _ label: String,
+    _ value: Int64,
+    systemImage: String
+  ) -> some View {
+    HStack(spacing: 3) {
+      Image(systemName: systemImage)
+        .font(.caption.weight(.bold))
         .foregroundStyle(.secondary)
+      Text(label)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+      Text(bytes(value))
+        .font(.caption.monospacedDigit().weight(.bold))
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
-  private func osInitial(_ value: String) -> String {
-    value.trimmingCharacters(in: .whitespacesAndNewlines).first.map(String.init) ?? "L"
+  private var separatorDot: some View {
+    Text("·")
+      .font(.caption.weight(.bold))
+      .foregroundStyle(.tertiary)
+  }
+
+  private func simpleSubtitle(_ snapshot: ServerSnapshot) -> String {
+    let uptime = formatUptime(snapshot.uptimeSeconds ?? 0)
+    if !snapshot.osName.isEmpty {
+      return uptime.isEmpty ? snapshot.osName : "\(snapshot.osName) · \(uptime)"
+    }
+    let pieces = snapshot.subtitle.components(separatedBy: "  |  ")
+    let os = pieces.first?.isEmpty == false ? pieces[0] : "--"
+    return uptime.isEmpty ? os : "\(os) · \(uptime)"
+  }
+
+  private func usageColor(_ value: Double) -> Color {
+    if value >= 85 { return .red }
+    if value >= 60 { return .orange }
+    return .green
+  }
+
+  private func osIcon(_ value: String) -> some View {
+    Image(osAssetName(value))
+      .resizable()
+      .scaledToFit()
+      .frame(width: 34, height: 34)
+  }
+
+  private func osAssetName(_ value: String) -> String {
+    let source = value.lowercased()
+    if source.contains("ubuntu") { return "Ubuntu" }
+    if source.contains("debian") { return "Debian" }
+    if source.contains("centos") { return "CentOS" }
+    if source.contains("fedora") { return "Fedora" }
+    if source.contains("arch") { return "Arch Linux" }
+    if source.contains("suse") { return "openSUSE" }
+    return "Linux"
   }
 
   private func percent(_ value: Double) -> String {
@@ -844,6 +932,16 @@ struct ServerStatusWidgetEntryView: View {
       ? "\(Int(amount.rounded()))\(units[index])"
       : String(format: "%.1f%@", amount, units[index])
   }
+
+  private func formatUptime(_ seconds: Int) -> String {
+    guard seconds > 0 else { return "" }
+    let days = seconds / 86_400
+    let hours = (seconds % 86_400) / 3_600
+    let minutes = (seconds % 3_600) / 60
+    if days > 0 { return l10nFormat("widget.uptime.days_hours", days, hours) }
+    if hours > 0 { return l10nFormat("widget.uptime.hours_minutes", hours, minutes) }
+    return l10nFormat("widget.uptime.minutes", minutes)
+  }
 }
 
 struct ServerStatusWidget: Widget {
@@ -857,9 +955,10 @@ struct ServerStatusWidget: Widget {
     ) { entry in
       ServerStatusWidgetEntryView(entry: entry)
     }
-    .configurationDisplayName("Mono Dash Server")
-    .description("Show and refresh a selected server status card.")
+    .configurationDisplayName("widget.display.name")
+    .description("widget.display.description")
     .supportedFamilies([.systemSmall, .systemMedium])
+    .contentMarginsDisabled()
   }
 }
 

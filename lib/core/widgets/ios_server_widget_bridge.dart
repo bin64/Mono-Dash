@@ -110,6 +110,7 @@ class IosServerWidgetBridge {
       'title': title,
       'subtitle': subtitle.isEmpty ? '${server.host}:${server.port}' : subtitle,
       'osName': _osName(base),
+      'uptimeSeconds': current.uptimeSeconds,
       'cpuPercent': current.cpuUsedPercent,
       'memoryPercent': current.memoryUsedPercent,
       'diskPercent': disk?.usedPercent,
