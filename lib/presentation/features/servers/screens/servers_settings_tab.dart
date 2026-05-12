@@ -27,7 +27,6 @@ import '../../settings/providers/app_settings_provider.dart';
 import '../../settings/screens/app_lock_settings_page.dart';
 import '../../settings/screens/app_icon_settings_page.dart';
 import '../../settings/screens/card_style_settings_page.dart';
-import '../../settings/screens/language_settings_page.dart';
 import 'open_source_licenses_page.dart';
 import 'premium_purchase_page.dart';
 
@@ -169,11 +168,7 @@ class ServersSettingsTab extends ConsumerWidget {
                     iconColor: CupertinoColors.systemTeal,
                     title: l10n.settings_language_title,
                     subtitle: localeOption.labelOf(l10n),
-                    onTap: () => Navigator.of(context).push(
-                      CupertinoPageRoute<void>(
-                        builder: (_) => const LanguageSettingsPage(),
-                      ),
-                    ),
+                    onTap: () => _editLanguage(context, ref, localeOption),
                   ),
                 ],
               ),
@@ -372,6 +367,39 @@ class ServersSettingsTab extends ConsumerWidget {
     await ref
         .read(appSettingsControllerProvider.notifier)
         .setAppearanceMode(result);
+  }
+
+  Future<void> _editLanguage(
+    BuildContext context,
+    WidgetRef ref,
+    AppLocaleOption selectedOption,
+  ) async {
+    final l10n = context.l10n;
+    final result = await showAppActionPickerSheet<AppLocaleOption>(
+      context,
+      title: l10n.settings_language_title,
+      selectedValue: selectedOption,
+      options: [
+        AppPickerOption(
+          value: AppLocaleOption.system,
+          label: AppLocaleOption.system.labelOf(l10n),
+          icon: TablerIcons.device_desktop,
+        ),
+        AppPickerOption(
+          value: AppLocaleOption.zh,
+          label: AppLocaleOption.zh.labelOf(l10n),
+          icon: TablerIcons.language,
+        ),
+        AppPickerOption(
+          value: AppLocaleOption.en,
+          label: AppLocaleOption.en.labelOf(l10n),
+          icon: TablerIcons.language,
+        ),
+      ],
+    );
+    if (result == null || result == selectedOption) return;
+
+    await ref.read(localeControllerProvider.notifier).setOption(result);
   }
 
   Future<void> _editCustomHeaders(
