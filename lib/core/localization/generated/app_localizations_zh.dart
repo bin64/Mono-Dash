@@ -2306,6 +2306,75 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settings_sync_failedToast => '同步失败';
 
   @override
+  String get settings_sync_webDavConfigTitle => 'WebDAV 配置';
+
+  @override
+  String get settings_sync_webDavConfigMissing => '未配置 WebDAV 地址';
+
+  @override
+  String get settings_sync_webDavTitle => 'WebDAV 同步';
+
+  @override
+  String get settings_sync_webDavDisabledSubtitle => '同步服务器信息，默认不上传 API Key';
+
+  @override
+  String get settings_sync_webDavSyncNowSubtitle => '从 WebDAV 拉取并合并服务器信息';
+
+  @override
+  String get settings_sync_webDavEnabledToast => 'WebDAV 同步已开启';
+
+  @override
+  String get settings_sync_webDavDisabledToast => 'WebDAV 同步已关闭';
+
+  @override
+  String get settings_sync_webDavDescription =>
+      'WebDAV 会将服务器列表保存到远端 JSON 文件。默认不会上传 API Key；开启下方开关后，API Key 会随文件一起同步，请确认你的 WebDAV 存储可信。';
+
+  @override
+  String get settings_sync_webDavUrlLabel => 'WebDAV 地址';
+
+  @override
+  String get settings_sync_webDavUrlPlaceholder =>
+      'https://example.com/dav/mono-dash/';
+
+  @override
+  String get settings_sync_webDavUsernameLabel => '用户名';
+
+  @override
+  String get settings_sync_webDavUsernamePlaceholder => '可留空';
+
+  @override
+  String get settings_sync_webDavPasswordLabel => '密码';
+
+  @override
+  String get settings_sync_webDavPasswordPlaceholder => '可留空';
+
+  @override
+  String get settings_sync_webDavUrlInvalid => '请输入有效的 http 或 https 地址';
+
+  @override
+  String get settings_sync_webDavSyncApiKeysTitle => '同步 API Key';
+
+  @override
+  String get settings_sync_webDavSyncApiKeysSubtitle =>
+      '开启后 API Key 会写入 WebDAV 同步文件';
+
+  @override
+  String settings_sync_webDavErrorReadFailed(String status) {
+    return '无法读取 WebDAV 同步文件（HTTP $status）';
+  }
+
+  @override
+  String settings_sync_webDavErrorWriteFailed(String status) {
+    return '无法写入 WebDAV 同步文件（HTTP $status）';
+  }
+
+  @override
+  String settings_sync_webDavErrorDirectoryFailed(String status) {
+    return '无法创建 WebDAV 目录（HTTP $status）';
+  }
+
+  @override
   String get settings_network_customHeadersTitle => '自定义 Header';
 
   @override

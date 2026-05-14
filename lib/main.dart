@@ -152,7 +152,10 @@ class _ICloudServerSyncMaintenanceState
   void _scheduleSync() {
     if (!mounted || !_isForeground) return;
     final storageService = ref.read(storageServiceProvider);
-    if (!storageService.isServerSyncEnabled) return;
+    if (!storageService.isServerSyncEnabled &&
+        !storageService.isWebDavSyncEnabled) {
+      return;
+    }
 
     final now = DateTime.now();
     final lastStartedAt = _lastSyncStartedAt;
@@ -165,10 +168,14 @@ class _ICloudServerSyncMaintenanceState
     _syncTimer = Timer(_syncDelay, () {
       if (!mounted || !_isForeground) return;
       final latestStorageService = ref.read(storageServiceProvider);
-      if (!latestStorageService.isServerSyncEnabled) return;
+      if (!latestStorageService.isServerSyncEnabled &&
+          !latestStorageService.isWebDavSyncEnabled) {
+        return;
+      }
 
       _lastSyncStartedAt = DateTime.now();
       unawaited(latestStorageService.syncServersFromCloud());
+      unawaited(latestStorageService.syncServersFromWebDav());
     });
   }
 }

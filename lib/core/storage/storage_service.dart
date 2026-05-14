@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../domain/entities/server.dart';
 
 import 'icloud_key_value_bridge.dart';
+import 'webdav_sync_client.dart';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -48,6 +49,7 @@ class StorageService {
       StreamController<void>.broadcast();
   StreamSubscription<String>? _iCloudChangesSubscription;
   Future<void>? _cloudSyncInFlight;
+  Future<void>? _webDavSyncInFlight;
   static const _legacyAllowInsecureConnectionsKey =
       'allow_insecure_connections';
   static const _serversFileName = 'servers.json';
@@ -57,6 +59,14 @@ class StorageService {
   static const _serverSyncLastErrorKey = 'server_sync_last_error';
   static const _serverSyncPayloadKey = 'mono_dash_server_sync_payload_v1';
   static const _serverSyncTombstonesKey = 'server_sync_tombstones_v1';
+  static const _webDavSyncEnabledKey = 'webdav_sync_enabled';
+  static const _webDavSyncUrlKey = 'webdav_sync_url';
+  static const _webDavSyncUsernameKey = 'webdav_sync_username';
+  static const _webDavSyncPasswordKey = 'webdav_sync_password';
+  static const _webDavSyncApiKeysKey = 'webdav_sync_api_keys';
+  static const _webDavSyncLastAttemptedAtKey = 'webdav_sync_last_attempted_at';
+  static const _webDavSyncLastSucceededAtKey = 'webdav_sync_last_succeeded_at';
+  static const _webDavSyncLastErrorKey = 'webdav_sync_last_error';
   static const _uuid = Uuid();
   static const _tombstoneRetention = Duration(days: 90);
 
@@ -199,6 +209,9 @@ class StorageService {
   bool get isServerSyncEnabled =>
       _prefs.getBool(_serverSyncEnabledKey) ?? false;
 
+  bool get isWebDavSyncEnabled =>
+      _prefs.getBool(_webDavSyncEnabledKey) ?? false;
+
   Future<ServerSyncStatus> getServerSyncStatus() async {
     final enabled = isServerSyncEnabled;
     return ServerSyncStatus(
@@ -213,6 +226,18 @@ class StorageService {
     );
   }
 
+  Future<WebDavSyncStatus> getWebDavSyncStatus() async {
+    final config = await getWebDavSyncConfig();
+    return WebDavSyncStatus(
+      enabled: config.enabled,
+      configured: config.isConfigured,
+      url: config.url,
+      lastAttemptedAt: _dateTimeFromPrefs(_webDavSyncLastAttemptedAtKey),
+      lastSucceededAt: _dateTimeFromPrefs(_webDavSyncLastSucceededAtKey),
+      lastError: _prefs.getString(_webDavSyncLastErrorKey),
+    );
+  }
+
   Future<void> setServerSyncEnabled(bool enabled) async {
     await _prefs.setBool(_serverSyncEnabledKey, enabled);
     _syncStatusController.add(null);
@@ -221,6 +246,41 @@ class StorageService {
     await _tryCloudOperation(_iCloudKeyValueBridge.start);
     await _normalizeStoredServers(migrateApiKeysToSyncKeychain: true);
     await syncServersFromCloud(force: true);
+  }
+
+  Future<WebDavSyncConfig> getWebDavSyncConfig() async {
+    return WebDavSyncConfig(
+      enabled: isWebDavSyncEnabled,
+      url: _prefs.getString(_webDavSyncUrlKey) ?? '',
+      username: _prefs.getString(_webDavSyncUsernameKey) ?? '',
+      password: await _secureStorage.read(key: _webDavSyncPasswordKey) ?? '',
+      syncApiKeys: _prefs.getBool(_webDavSyncApiKeysKey) ?? false,
+    );
+  }
+
+  Future<void> saveWebDavSyncConfig({
+    required String url,
+    required String username,
+    required String password,
+    required bool syncApiKeys,
+  }) async {
+    await _prefs.setString(_webDavSyncUrlKey, url.trim());
+    await _prefs.setString(_webDavSyncUsernameKey, username.trim());
+    await _prefs.setBool(_webDavSyncApiKeysKey, syncApiKeys);
+    if (password.isEmpty) {
+      await _secureStorage.delete(key: _webDavSyncPasswordKey);
+    } else {
+      await _secureStorage.write(key: _webDavSyncPasswordKey, value: password);
+    }
+    _syncStatusController.add(null);
+  }
+
+  Future<void> setWebDavSyncEnabled(bool enabled) async {
+    await _prefs.setBool(_webDavSyncEnabledKey, enabled);
+    _syncStatusController.add(null);
+    if (!enabled) return;
+
+    await syncServersFromWebDav(force: true);
   }
 
   Future<void> syncServersFromCloud({bool force = false}) {
@@ -236,6 +296,21 @@ class StorageService {
     });
     _cloudSyncInFlight = syncFuture;
     return _cloudSyncInFlight!;
+  }
+
+  Future<void> syncServersFromWebDav({bool force = false}) {
+    if (!force && !isWebDavSyncEnabled) return Future.value();
+    final inFlight = _webDavSyncInFlight;
+    if (inFlight != null) return inFlight;
+
+    late final Future<void> syncFuture;
+    syncFuture = _syncServersFromWebDav().whenComplete(() {
+      if (identical(_webDavSyncInFlight, syncFuture)) {
+        _webDavSyncInFlight = null;
+      }
+    });
+    _webDavSyncInFlight = syncFuture;
+    return _webDavSyncInFlight!;
   }
 
   Future<void> _syncServersFromCloud() async {
@@ -288,7 +363,6 @@ class StorageService {
     if (mergeResult.changedLocalTombstones) {
       await _writeServerTombstones(mergeResult.tombstones);
     }
-
     final nextPayload = await _buildServerSyncPayload();
     if (nextPayload.canonicalJson != remotePayload.canonicalJson) {
       await _tryCloudOperation(
@@ -299,6 +373,76 @@ class StorageService {
       );
     }
     await _markSyncSuccess();
+  }
+
+  Future<void> _syncServersFromWebDav() async {
+    if (!isWebDavSyncEnabled) return;
+    await _markWebDavSyncAttempt();
+
+    final config = await getWebDavSyncConfig();
+    if (!config.isConfigured) {
+      await _markWebDavSyncFailure('webdav_unconfigured');
+      return;
+    }
+
+    try {
+      final client = WebDavSyncClient(
+        url: config.url,
+        username: config.username,
+        password: config.password,
+      );
+
+      final remotePayloadString = await client.readPayload();
+      final remotePayload = _ServerSyncPayload.tryDecode(remotePayloadString);
+      if (remotePayload == null) {
+        final localPayload = await _buildServerSyncPayload(
+          includeApiKeys: config.syncApiKeys,
+        );
+        await client.writePayload(localPayload.canonicalJson);
+        await _markWebDavSyncSuccess();
+        return;
+      }
+
+      final localServers = await _readServers();
+      final localTombstones = _readServerTombstones();
+      final mergeResult = _mergeServerSyncPayload(
+        localServers: localServers,
+        localTombstones: localTombstones,
+        remotePayload: remotePayload,
+      );
+
+      if (mergeResult.changedLocalServers) {
+        await _writeServers(
+          mergeResult.servers,
+          syncToCloud: false,
+          notify: true,
+        );
+        for (final id in mergeResult.removedLocalServerIds) {
+          final removedServer = _serverById(localServers, id);
+          if (removedServer != null) {
+            await _deleteApiKeyForServer(removedServer);
+          } else {
+            await deleteApiKey(id);
+          }
+        }
+      }
+      if (mergeResult.changedLocalTombstones) {
+        await _writeServerTombstones(mergeResult.tombstones);
+      }
+      if (config.syncApiKeys) {
+        await _applyApiKeysFromPayload(remotePayload, mergeResult.servers);
+      }
+
+      final nextPayload = await _buildServerSyncPayload(
+        includeApiKeys: config.syncApiKeys,
+      );
+      if (nextPayload.canonicalJson != remotePayload.canonicalJson) {
+        await client.writePayload(nextPayload.canonicalJson);
+      }
+      await _markWebDavSyncSuccess();
+    } catch (error) {
+      await _markWebDavSyncFailure(_webDavSyncErrorCode(error));
+    }
   }
 
   Future<List<Server>> _readServers() async {
@@ -498,33 +642,90 @@ class StorageService {
   }
 
   Future<void> _pushServerSyncSnapshot() async {
-    if (!isServerSyncEnabled) return;
-    final isAvailable = await _tryCloudOperation(
-      _iCloudKeyValueBridge.isAvailable,
-    );
-    if (isAvailable != true) return;
+    if (!isServerSyncEnabled && !isWebDavSyncEnabled) return;
 
     final payload = await _buildServerSyncPayload();
-    await _tryCloudOperation(
-      () => _iCloudKeyValueBridge.setString(
-        _serverSyncPayloadKey,
-        payload.canonicalJson,
-      ),
-    );
+    if (isServerSyncEnabled) {
+      final isAvailable = await _tryCloudOperation(
+        _iCloudKeyValueBridge.isAvailable,
+      );
+      if (isAvailable == true) {
+        await _tryCloudOperation(
+          () => _iCloudKeyValueBridge.setString(
+            _serverSyncPayloadKey,
+            payload.canonicalJson,
+          ),
+        );
+      }
+    }
+    if (isWebDavSyncEnabled) {
+      final config = await getWebDavSyncConfig();
+      if (config.isConfigured) {
+        final client = WebDavSyncClient(
+          url: config.url,
+          username: config.username,
+          password: config.password,
+        );
+        final webDavPayload = config.syncApiKeys
+            ? await _buildServerSyncPayload(includeApiKeys: true)
+            : payload;
+        try {
+          await client.writePayload(webDavPayload.canonicalJson);
+        } catch (error) {
+          await _markWebDavSyncFailure(_webDavSyncErrorCode(error));
+        }
+      }
+    }
   }
 
-  Future<_ServerSyncPayload> _buildServerSyncPayload() async {
+  Future<_ServerSyncPayload> _buildServerSyncPayload({
+    bool includeApiKeys = false,
+  }) async {
     final servers = await _readServers();
     for (final server in servers) {
       _ensureServerSyncMetadata(server);
     }
     servers.sort((a, b) => a.sortIndex.compareTo(b.sortIndex));
     final tombstones = _pruneTombstones(_readServerTombstones());
+    final apiKeys = <String, String>{};
+    if (includeApiKeys) {
+      for (final server in servers) {
+        final apiKey = await getApiKey(server.id);
+        if (apiKey != null && apiKey.isNotEmpty) {
+          apiKeys[server.syncId] = apiKey;
+        }
+      }
+    }
     return _ServerSyncPayload(
       updatedAt: _payloadUpdatedAt(servers, tombstones),
       servers: servers,
       tombstones: tombstones,
+      apiKeys: apiKeys,
     );
+  }
+
+  Future<void> _applyApiKeysFromPayload(
+    _ServerSyncPayload payload,
+    List<Server> servers,
+  ) async {
+    if (payload.apiKeys.isEmpty) return;
+    final serversBySyncId = {
+      for (final server in servers) server.syncId: server,
+    };
+    for (final entry in payload.apiKeys.entries) {
+      final server = serversBySyncId[entry.key];
+      final apiKey = entry.value;
+      if (server == null || apiKey.isEmpty) continue;
+      await _secureStorage.write(key: _apiKeyKey(server.id), value: apiKey);
+      if (isServerSyncEnabled) {
+        await _trySecureOperation(
+          () => _syncSecureStorage.write(
+            key: _syncApiKeyKey(server.syncId),
+            value: apiKey,
+          ),
+        );
+      }
+    }
   }
 
   _ServerSyncMergeResult _mergeServerSyncPayload({
@@ -593,11 +794,13 @@ class StorageService {
       updatedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       servers: localServers,
       tombstones: _pruneTombstones(localTombstones),
+      apiKeys: const {},
     );
     final mergedPayload = _ServerSyncPayload(
       updatedAt: DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       servers: mergedServers,
       tombstones: tombstones,
+      apiKeys: const {},
     );
 
     return _ServerSyncMergeResult(
@@ -674,6 +877,47 @@ class StorageService {
     _syncStatusController.add(null);
   }
 
+  Future<void> _markWebDavSyncAttempt() async {
+    await _prefs.setString(
+      _webDavSyncLastAttemptedAtKey,
+      DateTime.now().toUtc().toIso8601String(),
+    );
+    _syncStatusController.add(null);
+  }
+
+  Future<void> _markWebDavSyncSuccess() async {
+    await _prefs.setString(
+      _webDavSyncLastSucceededAtKey,
+      DateTime.now().toUtc().toIso8601String(),
+    );
+    await _prefs.remove(_webDavSyncLastErrorKey);
+    _syncStatusController.add(null);
+  }
+
+  Future<void> _markWebDavSyncFailure(String error) async {
+    await _prefs.setString(_webDavSyncLastErrorKey, error);
+    _syncStatusController.add(null);
+  }
+
+  String _syncErrorMessage(Object error) {
+    final message = error.toString().trim();
+    if (message.isEmpty) return 'unknown_error';
+    return message;
+  }
+
+  String _webDavSyncErrorCode(Object error) {
+    if (error is FormatException) return 'webdav_invalid_url';
+    if (error is WebDavSyncException) {
+      final operation = switch (error.operation) {
+        WebDavSyncOperation.read => 'read',
+        WebDavSyncOperation.write => 'write',
+        WebDavSyncOperation.createDirectory => 'mkcol',
+      };
+      return 'webdav_${operation}_http_${error.statusCode ?? 'unknown'}';
+    }
+    return _syncErrorMessage(error);
+  }
+
   Future<T?> _tryCloudOperation<T>(Future<T> Function() operation) async {
     try {
       return await operation();
@@ -707,6 +951,24 @@ class ServerSyncStatus {
   final String? lastError;
 }
 
+class WebDavSyncStatus {
+  const WebDavSyncStatus({
+    required this.enabled,
+    required this.configured,
+    required this.url,
+    required this.lastAttemptedAt,
+    required this.lastSucceededAt,
+    required this.lastError,
+  });
+
+  final bool enabled;
+  final bool configured;
+  final String url;
+  final DateTime? lastAttemptedAt;
+  final DateTime? lastSucceededAt;
+  final String? lastError;
+}
+
 final serverSyncStatusProvider = FutureProvider<ServerSyncStatus>((ref) async {
   final storage = ref.watch(storageServiceProvider);
   final subscription = storage.syncStatusChanged.listen((_) {
@@ -716,16 +978,27 @@ final serverSyncStatusProvider = FutureProvider<ServerSyncStatus>((ref) async {
   return storage.getServerSyncStatus();
 });
 
+final webDavSyncStatusProvider = FutureProvider<WebDavSyncStatus>((ref) async {
+  final storage = ref.watch(storageServiceProvider);
+  final subscription = storage.syncStatusChanged.listen((_) {
+    ref.invalidateSelf();
+  });
+  ref.onDispose(subscription.cancel);
+  return storage.getWebDavSyncStatus();
+});
+
 class _ServerSyncPayload {
   _ServerSyncPayload({
     required this.updatedAt,
     required this.servers,
     required this.tombstones,
+    required this.apiKeys,
   });
 
   final DateTime updatedAt;
   final List<Server> servers;
   final Map<String, DateTime> tombstones;
+  final Map<String, String> apiKeys;
 
   static _ServerSyncPayload? tryDecode(String? content) {
     if (content == null || content.trim().isEmpty) return null;
@@ -735,19 +1008,19 @@ class _ServerSyncPayload {
 
       final rawServers = json['servers'];
       final rawTombstones = json['tombstones'];
+      final servers = rawServers is List
+          ? rawServers
+                .whereType<Map>()
+                .map((item) => Server.fromJson(Map<String, Object?>.from(item)))
+                .toList()
+          : <Server>[];
       return _ServerSyncPayload(
         updatedAt:
             DateTime.tryParse('${json['updatedAt']}') ??
             DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-        servers: rawServers is List
-            ? rawServers
-                  .whereType<Map>()
-                  .map(
-                    (item) => Server.fromJson(Map<String, Object?>.from(item)),
-                  )
-                  .toList()
-            : [],
+        servers: servers,
         tombstones: _decodeTombstones(rawTombstones),
+        apiKeys: _decodeApiKeys(rawServers),
       );
     } catch (_) {
       return null;
@@ -766,6 +1039,19 @@ class _ServerSyncPayload {
       }
     }
     return tombstones;
+  }
+
+  static Map<String, String> _decodeApiKeys(Object? rawServers) {
+    if (rawServers is! List) return const {};
+    final apiKeys = <String, String>{};
+    for (final item in rawServers.whereType<Map>()) {
+      final syncId = item['syncId']?.toString() ?? '';
+      final apiKey = item['apiKey']?.toString() ?? '';
+      if (syncId.isNotEmpty && apiKey.isNotEmpty) {
+        apiKeys[syncId] = apiKey;
+      }
+    }
+    return apiKeys;
   }
 
   String get canonicalJson => const JsonEncoder.withIndent('  ').convert({
@@ -793,8 +1079,8 @@ class _ServerSyncPayload {
     };
   }
 
-  static Map<String, Object?> _serverCloudJson(Server server) {
-    return {
+  Map<String, Object?> _serverCloudJson(Server server) {
+    final json = {
       'syncId': server.syncId,
       'name': server.name,
       'host': server.host,
@@ -805,6 +1091,11 @@ class _ServerSyncPayload {
       'createdAt': server.createdAt?.toIso8601String(),
       'updatedAt': server.updatedAt?.toIso8601String(),
     };
+    final apiKey = apiKeys[server.syncId];
+    if (apiKey != null && apiKey.isNotEmpty) {
+      json['apiKey'] = apiKey;
+    }
+    return json;
   }
 }
 

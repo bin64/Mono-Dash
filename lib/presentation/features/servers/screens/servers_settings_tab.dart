@@ -13,12 +13,14 @@ import '../../../../core/localization/l10n_x.dart';
 import '../../../../core/localization/locale_controller.dart';
 import '../../../../core/network/app_user_agent.dart';
 import '../../../../core/storage/storage_service.dart';
+import '../../../../core/storage/webdav_sync_client.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/format_utils.dart';
 import '../../../common/app_toast.dart';
 import '../../../common/components/action_sheet_launcher.dart';
 import '../../../common/components/action_sheet_scaffold.dart';
 import '../../../common/components/app_action_picker_sheet.dart';
+import '../../../common/components/app_form_components.dart';
 import '../../../common/components/app_picker.dart';
 import '../../../common/components/sub_menu_page.dart';
 import '../../panel_settings/widgets/edit_setting_value_sheet.dart';
@@ -58,6 +60,9 @@ class ServersSettingsTab extends ConsumerWidget {
     final syncStatusAsync = ref.watch(serverSyncStatusProvider);
     final syncStatus = syncStatusAsync.valueOrNull;
     final syncEnabled = syncStatus?.enabled ?? false;
+    final webDavSyncStatusAsync = ref.watch(webDavSyncStatusProvider);
+    final webDavSyncStatus = webDavSyncStatusAsync.valueOrNull;
+    final webDavSyncEnabled = webDavSyncStatus?.enabled ?? false;
     final requestTimeoutSeconds =
         settings?.requestTimeoutSeconds ??
         AppSettingsController.defaultRequestTimeoutSeconds;
@@ -155,6 +160,42 @@ class ServersSettingsTab extends ConsumerWidget {
                       onTap: syncStatusAsync.isLoading
                           ? null
                           : () => _syncServersNow(context, ref),
+                    ),
+                  _SettingsRow(
+                    icon: TablerIcons.server_bolt,
+                    iconColor: CupertinoColors.systemIndigo,
+                    title: l10n.settings_sync_webDavConfigTitle,
+                    subtitle: _webDavConfigSubtitle(context, webDavSyncStatus),
+                    onTap: webDavSyncStatusAsync.isLoading
+                        ? null
+                        : () => _showWebDavConfigSheet(context, ref),
+                  ),
+                  _SettingsSwitchRow(
+                    icon: CupertinoIcons.cloud_upload_fill,
+                    iconColor: CupertinoColors.systemGreen,
+                    title: l10n.settings_sync_webDavTitle,
+                    subtitle: _webDavSyncStatusSubtitle(
+                      context,
+                      webDavSyncStatus,
+                      webDavSyncStatusAsync.isLoading,
+                    ),
+                    value: webDavSyncEnabled,
+                    onChanged: webDavSyncStatusAsync.isLoading
+                        ? null
+                        : (value) => _setWebDavSyncEnabled(context, ref, value),
+                  ),
+                  if (webDavSyncEnabled)
+                    _SettingsRow(
+                      icon: CupertinoIcons.arrow_2_circlepath,
+                      iconColor: CupertinoColors.activeBlue,
+                      title: l10n.settings_sync_syncNowTitle,
+                      subtitle: _webDavSyncAttemptSubtitle(
+                        context,
+                        webDavSyncStatus,
+                      ),
+                      onTap: webDavSyncStatusAsync.isLoading
+                          ? null
+                          : () => _syncServersFromWebDavNow(context, ref),
                     ),
                 ],
               ),
@@ -345,6 +386,55 @@ class ServersSettingsTab extends ConsumerWidget {
     );
   }
 
+  String _webDavConfigSubtitle(BuildContext context, WebDavSyncStatus? status) {
+    final url = status?.url.trim() ?? '';
+    if (url.isEmpty) return context.l10n.settings_sync_webDavConfigMissing;
+    return url;
+  }
+
+  String _webDavSyncStatusSubtitle(
+    BuildContext context,
+    WebDavSyncStatus? status,
+    bool isLoading,
+  ) {
+    final l10n = context.l10n;
+    if (isLoading && status == null) return l10n.common_loading;
+    if (status == null || !status.enabled) {
+      return l10n.settings_sync_webDavDisabledSubtitle;
+    }
+    if (!status.configured) {
+      return l10n.settings_sync_webDavConfigMissing;
+    }
+    final lastSucceededAt = status.lastSucceededAt;
+    if (lastSucceededAt == null) {
+      return l10n.settings_sync_enabledWaitingSubtitle;
+    }
+    return l10n.settings_sync_lastSucceeded(
+      formatLocalDateTime(
+        lastSucceededAt.toIso8601String(),
+        locale: Localizations.localeOf(context).toLanguageTag(),
+        includeSeconds: false,
+      ),
+    );
+  }
+
+  String _webDavSyncAttemptSubtitle(
+    BuildContext context,
+    WebDavSyncStatus? status,
+  ) {
+    final attemptedAt = status?.lastAttemptedAt;
+    if (attemptedAt == null) {
+      return context.l10n.settings_sync_webDavSyncNowSubtitle;
+    }
+    return context.l10n.settings_sync_lastAttempted(
+      formatLocalDateTime(
+        attemptedAt.toIso8601String(),
+        locale: Localizations.localeOf(context).toLanguageTag(),
+        includeSeconds: false,
+      ),
+    );
+  }
+
   Future<void> _setServerSyncEnabled(
     BuildContext context,
     WidgetRef ref,
@@ -380,6 +470,108 @@ class ServersSettingsTab extends ConsumerWidget {
     } catch (error) {
       showAppErrorToast(l10n.settings_sync_failedToast, description: '$error');
     }
+  }
+
+  Future<void> _showWebDavConfigSheet(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final l10n = context.l10n;
+    final storage = ref.read(storageServiceProvider);
+    final config = await storage.getWebDavSyncConfig();
+    if (!context.mounted) return;
+
+    final result = await showActionSheet<_WebDavConfigResult>(
+      context: context,
+      useRootNavigator: true,
+      builder: (_) => _WebDavConfigSheet(config: config),
+    );
+    if (result == null) return;
+
+    try {
+      await storage.saveWebDavSyncConfig(
+        url: result.url,
+        username: result.username,
+        password: result.password,
+        syncApiKeys: result.syncApiKeys,
+      );
+      ref.invalidate(webDavSyncStatusProvider);
+      if (!context.mounted) return;
+      showAppSuccessToast(l10n.common_saved);
+    } catch (error) {
+      if (!context.mounted) return;
+      showAppErrorToast(l10n.settings_sync_failedToast, description: '$error');
+    }
+  }
+
+  Future<void> _setWebDavSyncEnabled(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    final l10n = context.l10n;
+    try {
+      await ref.read(storageServiceProvider).setWebDavSyncEnabled(enabled);
+      ref.invalidate(webDavSyncStatusProvider);
+      showAppSuccessToast(
+        enabled
+            ? l10n.settings_sync_webDavEnabledToast
+            : l10n.settings_sync_webDavDisabledToast,
+      );
+    } catch (error) {
+      showAppErrorToast(l10n.settings_sync_failedToast, description: '$error');
+    }
+  }
+
+  Future<void> _syncServersFromWebDavNow(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final l10n = context.l10n;
+    try {
+      await ref.read(storageServiceProvider).syncServersFromWebDav(force: true);
+      ref.invalidate(webDavSyncStatusProvider);
+      final status = await ref
+          .read(storageServiceProvider)
+          .getWebDavSyncStatus();
+      if (!context.mounted) return;
+      if (!status.configured) {
+        showAppErrorToast(l10n.settings_sync_webDavConfigMissing);
+        return;
+      }
+      if (status.lastError != null) {
+        showAppErrorToast(
+          l10n.settings_sync_failedToast,
+          description: _webDavSyncErrorDescription(context, status.lastError!),
+        );
+        return;
+      }
+      showAppSuccessToast(l10n.settings_sync_successToast);
+    } catch (error) {
+      showAppErrorToast(l10n.settings_sync_failedToast, description: '$error');
+    }
+  }
+
+  String _webDavSyncErrorDescription(BuildContext context, String error) {
+    final l10n = context.l10n;
+    if (error == 'webdav_unconfigured') {
+      return l10n.settings_sync_webDavConfigMissing;
+    }
+    if (error == 'webdav_invalid_url') {
+      return l10n.settings_sync_webDavUrlInvalid;
+    }
+    final httpError = RegExp(
+      r'^webdav_(read|write|mkcol)_http_(.+)$',
+    ).firstMatch(error);
+    if (httpError == null) return error;
+
+    final status = httpError.group(2) ?? 'unknown';
+    return switch (httpError.group(1)) {
+      'read' => l10n.settings_sync_webDavErrorReadFailed(status),
+      'write' => l10n.settings_sync_webDavErrorWriteFailed(status),
+      'mkcol' => l10n.settings_sync_webDavErrorDirectoryFailed(status),
+      _ => error,
+    };
   }
 
   Future<void> _showOpenSourceLicenses(BuildContext context) async {
@@ -577,6 +769,200 @@ class ServersSettingsTab extends ConsumerWidget {
       headers[key] = value;
     }
     return headers;
+  }
+}
+
+class _WebDavConfigResult {
+  const _WebDavConfigResult({
+    required this.url,
+    required this.username,
+    required this.password,
+    required this.syncApiKeys,
+  });
+
+  final String url;
+  final String username;
+  final String password;
+  final bool syncApiKeys;
+}
+
+class _WebDavConfigSheet extends StatefulWidget {
+  const _WebDavConfigSheet({required this.config});
+
+  final WebDavSyncConfig config;
+
+  @override
+  State<_WebDavConfigSheet> createState() => _WebDavConfigSheetState();
+}
+
+class _WebDavConfigSheetState extends State<_WebDavConfigSheet> {
+  late final TextEditingController _urlController;
+  late final TextEditingController _usernameController;
+  late final TextEditingController _passwordController;
+  late bool _syncApiKeys;
+  String? _urlError;
+
+  @override
+  void initState() {
+    super.initState();
+    _urlController = TextEditingController(text: widget.config.url);
+    _usernameController = TextEditingController(text: widget.config.username);
+    _passwordController = TextEditingController(text: widget.config.password);
+    _syncApiKeys = widget.config.syncApiKeys;
+    _validateUrl(_urlController.text);
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _validateUrl(String value) {
+    final trimmed = value.trim();
+    String? error;
+    if (trimmed.isNotEmpty) {
+      final uri = Uri.tryParse(trimmed);
+      if (uri == null ||
+          !uri.hasScheme ||
+          uri.host.isEmpty ||
+          (uri.scheme != 'https' && uri.scheme != 'http')) {
+        error = context.l10n.settings_sync_webDavUrlInvalid;
+      }
+    }
+    setState(() => _urlError = error);
+  }
+
+  void _save() {
+    if (_urlError != null) return;
+    Navigator.of(context).pop(
+      _WebDavConfigResult(
+        url: _urlController.text.trim(),
+        username: _usernameController.text.trim(),
+        password: _passwordController.text,
+        syncApiKeys: _syncApiKeys,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return ActionSheetScaffold(
+      isAdaptive: true,
+      showHandle: false,
+      isFloating: true,
+      hasHorizontalPadding: true,
+      contentPadding: EdgeInsets.zero,
+      panelHeader: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: CupertinoButton(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  l10n.common_cancel,
+                  style: TextStyle(
+                    color: AppColors.secondaryLabel(context),
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ),
+            Text(
+              l10n.settings_sync_webDavConfigTitle,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: AppColors.label(context),
+                letterSpacing: -0.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              l10n.settings_sync_webDavDescription,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.35,
+                color: AppColors.secondaryLabel(context),
+              ),
+            ),
+            const SizedBox(height: 16),
+            AppFormItem(
+              label: l10n.settings_sync_webDavUrlLabel,
+              icon: CupertinoIcons.link,
+              child: AppFormTextField(
+                controller: _urlController,
+                placeholder: l10n.settings_sync_webDavUrlPlaceholder,
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.next,
+                onChanged: _validateUrl,
+              ),
+            ),
+            if (_urlError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _urlError!,
+                style: const TextStyle(
+                  color: CupertinoColors.systemRed,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            AppFormItem(
+              label: l10n.settings_sync_webDavUsernameLabel,
+              icon: CupertinoIcons.person_fill,
+              child: AppFormTextField(
+                controller: _usernameController,
+                placeholder: l10n.settings_sync_webDavUsernamePlaceholder,
+                textInputAction: TextInputAction.next,
+              ),
+            ),
+            const SizedBox(height: 14),
+            AppFormItem(
+              label: l10n.settings_sync_webDavPasswordLabel,
+              icon: CupertinoIcons.lock_fill,
+              child: AppFormTextField(
+                controller: _passwordController,
+                placeholder: l10n.settings_sync_webDavPasswordPlaceholder,
+                obscureText: true,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _save(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            _SettingsSwitchRow(
+              icon: TablerIcons.key,
+              iconColor: CupertinoColors.systemOrange,
+              title: l10n.settings_sync_webDavSyncApiKeysTitle,
+              subtitle: l10n.settings_sync_webDavSyncApiKeysSubtitle,
+              value: _syncApiKeys,
+              onChanged: (value) => setState(() => _syncApiKeys = value),
+            ),
+            const SizedBox(height: 24),
+            CupertinoButton.filled(
+              onPressed: _urlError == null ? _save : null,
+              child: Text(l10n.common_save),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

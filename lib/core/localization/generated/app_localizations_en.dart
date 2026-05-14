@@ -2374,6 +2374,79 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settings_sync_failedToast => 'Sync failed';
 
   @override
+  String get settings_sync_webDavConfigTitle => 'WebDAV Config';
+
+  @override
+  String get settings_sync_webDavConfigMissing =>
+      'WebDAV URL is not configured';
+
+  @override
+  String get settings_sync_webDavTitle => 'WebDAV Sync';
+
+  @override
+  String get settings_sync_webDavDisabledSubtitle =>
+      'Sync server info. API keys are not uploaded by default';
+
+  @override
+  String get settings_sync_webDavSyncNowSubtitle =>
+      'Pull from WebDAV and merge server info';
+
+  @override
+  String get settings_sync_webDavEnabledToast => 'WebDAV Sync is enabled';
+
+  @override
+  String get settings_sync_webDavDisabledToast => 'WebDAV Sync is disabled';
+
+  @override
+  String get settings_sync_webDavDescription =>
+      'WebDAV stores the server list in a remote JSON file. API keys are not uploaded by default. If you enable the API key option below, API keys will be synced in that file, so only use trusted WebDAV storage.';
+
+  @override
+  String get settings_sync_webDavUrlLabel => 'WebDAV URL';
+
+  @override
+  String get settings_sync_webDavUrlPlaceholder =>
+      'https://example.com/dav/mono-dash/';
+
+  @override
+  String get settings_sync_webDavUsernameLabel => 'Username';
+
+  @override
+  String get settings_sync_webDavUsernamePlaceholder => 'Optional';
+
+  @override
+  String get settings_sync_webDavPasswordLabel => 'Password';
+
+  @override
+  String get settings_sync_webDavPasswordPlaceholder => 'Optional';
+
+  @override
+  String get settings_sync_webDavUrlInvalid =>
+      'Enter a valid http or https URL';
+
+  @override
+  String get settings_sync_webDavSyncApiKeysTitle => 'Sync API Keys';
+
+  @override
+  String get settings_sync_webDavSyncApiKeysSubtitle =>
+      'When enabled, API keys are written to the WebDAV sync file';
+
+  @override
+  String settings_sync_webDavErrorReadFailed(String status) {
+    return 'Could not read the WebDAV sync file (HTTP $status)';
+  }
+
+  @override
+  String settings_sync_webDavErrorWriteFailed(String status) {
+    return 'Could not write the WebDAV sync file (HTTP $status)';
+  }
+
+  @override
+  String settings_sync_webDavErrorDirectoryFailed(String status) {
+    return 'Could not create the WebDAV directory (HTTP $status)';
+  }
+
+  @override
   String get settings_network_customHeadersTitle => 'Custom Headers';
 
   @override

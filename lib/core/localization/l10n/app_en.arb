@@ -3252,6 +3252,101 @@
   "@settings_sync_failedToast": {
     "description": "Toast shown after sync fails."
   },
+  "settings_sync_webDavConfigTitle": "WebDAV Config",
+  "@settings_sync_webDavConfigTitle": {
+    "description": "Settings row title for WebDAV configuration."
+  },
+  "settings_sync_webDavConfigMissing": "WebDAV URL is not configured",
+  "@settings_sync_webDavConfigMissing": {
+    "description": "Subtitle shown when WebDAV sync has no URL configured."
+  },
+  "settings_sync_webDavTitle": "WebDAV Sync",
+  "@settings_sync_webDavTitle": {
+    "description": "Settings row title for WebDAV sync."
+  },
+  "settings_sync_webDavDisabledSubtitle": "Sync server info. API keys are not uploaded by default",
+  "@settings_sync_webDavDisabledSubtitle": {
+    "description": "Subtitle shown when WebDAV sync is disabled."
+  },
+  "settings_sync_webDavSyncNowSubtitle": "Pull from WebDAV and merge server info",
+  "@settings_sync_webDavSyncNowSubtitle": {
+    "description": "Settings row subtitle for manually starting WebDAV sync."
+  },
+  "settings_sync_webDavEnabledToast": "WebDAV Sync is enabled",
+  "@settings_sync_webDavEnabledToast": {
+    "description": "Toast shown after enabling WebDAV sync."
+  },
+  "settings_sync_webDavDisabledToast": "WebDAV Sync is disabled",
+  "@settings_sync_webDavDisabledToast": {
+    "description": "Toast shown after disabling WebDAV sync."
+  },
+  "settings_sync_webDavDescription": "WebDAV stores the server list in a remote JSON file. API keys are not uploaded by default. If you enable the API key option below, API keys will be synced in that file, so only use trusted WebDAV storage.",
+  "@settings_sync_webDavDescription": {
+    "description": "Description shown in the WebDAV configuration sheet."
+  },
+  "settings_sync_webDavUrlLabel": "WebDAV URL",
+  "@settings_sync_webDavUrlLabel": {
+    "description": "Label for the WebDAV URL field."
+  },
+  "settings_sync_webDavUrlPlaceholder": "https://example.com/dav/mono-dash/",
+  "@settings_sync_webDavUrlPlaceholder": {
+    "description": "Placeholder for the WebDAV URL field."
+  },
+  "settings_sync_webDavUsernameLabel": "Username",
+  "@settings_sync_webDavUsernameLabel": {
+    "description": "Label for the WebDAV username field."
+  },
+  "settings_sync_webDavUsernamePlaceholder": "Optional",
+  "@settings_sync_webDavUsernamePlaceholder": {
+    "description": "Placeholder for the WebDAV username field."
+  },
+  "settings_sync_webDavPasswordLabel": "Password",
+  "@settings_sync_webDavPasswordLabel": {
+    "description": "Label for the WebDAV password field."
+  },
+  "settings_sync_webDavPasswordPlaceholder": "Optional",
+  "@settings_sync_webDavPasswordPlaceholder": {
+    "description": "Placeholder for the WebDAV password field."
+  },
+  "settings_sync_webDavUrlInvalid": "Enter a valid http or https URL",
+  "@settings_sync_webDavUrlInvalid": {
+    "description": "Validation message for an invalid WebDAV URL."
+  },
+  "settings_sync_webDavSyncApiKeysTitle": "Sync API Keys",
+  "@settings_sync_webDavSyncApiKeysTitle": {
+    "description": "Title for the WebDAV API key sync option."
+  },
+  "settings_sync_webDavSyncApiKeysSubtitle": "When enabled, API keys are written to the WebDAV sync file",
+  "@settings_sync_webDavSyncApiKeysSubtitle": {
+    "description": "Subtitle for the WebDAV API key sync option."
+  },
+  "settings_sync_webDavErrorReadFailed": "Could not read the WebDAV sync file (HTTP {status})",
+  "@settings_sync_webDavErrorReadFailed": {
+    "description": "Error description shown when reading the WebDAV sync file fails.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_sync_webDavErrorWriteFailed": "Could not write the WebDAV sync file (HTTP {status})",
+  "@settings_sync_webDavErrorWriteFailed": {
+    "description": "Error description shown when writing the WebDAV sync file fails.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_sync_webDavErrorDirectoryFailed": "Could not create the WebDAV directory (HTTP {status})",
+  "@settings_sync_webDavErrorDirectoryFailed": {
+    "description": "Error description shown when creating a WebDAV directory fails.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
   "settings_network_customHeadersTitle": "Custom Headers",
   "@settings_network_customHeadersTitle": {
     "description": "Settings row title for custom request headers."

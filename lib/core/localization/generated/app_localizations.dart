@@ -4382,6 +4382,126 @@ abstract class AppLocalizations {
   /// **'Sync failed'**
   String get settings_sync_failedToast;
 
+  /// Settings row title for WebDAV configuration.
+  ///
+  /// In en, this message translates to:
+  /// **'WebDAV Config'**
+  String get settings_sync_webDavConfigTitle;
+
+  /// Subtitle shown when WebDAV sync has no URL configured.
+  ///
+  /// In en, this message translates to:
+  /// **'WebDAV URL is not configured'**
+  String get settings_sync_webDavConfigMissing;
+
+  /// Settings row title for WebDAV sync.
+  ///
+  /// In en, this message translates to:
+  /// **'WebDAV Sync'**
+  String get settings_sync_webDavTitle;
+
+  /// Subtitle shown when WebDAV sync is disabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync server info. API keys are not uploaded by default'**
+  String get settings_sync_webDavDisabledSubtitle;
+
+  /// Settings row subtitle for manually starting WebDAV sync.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull from WebDAV and merge server info'**
+  String get settings_sync_webDavSyncNowSubtitle;
+
+  /// Toast shown after enabling WebDAV sync.
+  ///
+  /// In en, this message translates to:
+  /// **'WebDAV Sync is enabled'**
+  String get settings_sync_webDavEnabledToast;
+
+  /// Toast shown after disabling WebDAV sync.
+  ///
+  /// In en, this message translates to:
+  /// **'WebDAV Sync is disabled'**
+  String get settings_sync_webDavDisabledToast;
+
+  /// Description shown in the WebDAV configuration sheet.
+  ///
+  /// In en, this message translates to:
+  /// **'WebDAV stores the server list in a remote JSON file. API keys are not uploaded by default. If you enable the API key option below, API keys will be synced in that file, so only use trusted WebDAV storage.'**
+  String get settings_sync_webDavDescription;
+
+  /// Label for the WebDAV URL field.
+  ///
+  /// In en, this message translates to:
+  /// **'WebDAV URL'**
+  String get settings_sync_webDavUrlLabel;
+
+  /// Placeholder for the WebDAV URL field.
+  ///
+  /// In en, this message translates to:
+  /// **'https://example.com/dav/mono-dash/'**
+  String get settings_sync_webDavUrlPlaceholder;
+
+  /// Label for the WebDAV username field.
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get settings_sync_webDavUsernameLabel;
+
+  /// Placeholder for the WebDAV username field.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional'**
+  String get settings_sync_webDavUsernamePlaceholder;
+
+  /// Label for the WebDAV password field.
+  ///
+  /// In en, this message translates to:
+  /// **'Password'**
+  String get settings_sync_webDavPasswordLabel;
+
+  /// Placeholder for the WebDAV password field.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional'**
+  String get settings_sync_webDavPasswordPlaceholder;
+
+  /// Validation message for an invalid WebDAV URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid http or https URL'**
+  String get settings_sync_webDavUrlInvalid;
+
+  /// Title for the WebDAV API key sync option.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync API Keys'**
+  String get settings_sync_webDavSyncApiKeysTitle;
+
+  /// Subtitle for the WebDAV API key sync option.
+  ///
+  /// In en, this message translates to:
+  /// **'When enabled, API keys are written to the WebDAV sync file'**
+  String get settings_sync_webDavSyncApiKeysSubtitle;
+
+  /// Error description shown when reading the WebDAV sync file fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not read the WebDAV sync file (HTTP {status})'**
+  String settings_sync_webDavErrorReadFailed(String status);
+
+  /// Error description shown when writing the WebDAV sync file fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not write the WebDAV sync file (HTTP {status})'**
+  String settings_sync_webDavErrorWriteFailed(String status);
+
+  /// Error description shown when creating a WebDAV directory fails.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not create the WebDAV directory (HTTP {status})'**
+  String settings_sync_webDavErrorDirectoryFailed(String status);
+
   /// Settings row title for custom request headers.
   ///
   /// In en, this message translates to:
