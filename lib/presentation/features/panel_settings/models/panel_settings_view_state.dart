@@ -28,7 +28,7 @@ class PanelSettingsViewState {
   final String ipWhiteList;
   final int apiKeyValidityTime;
 
-  bool get apiEnabled => apiInterfaceStatus == 'Enable';
+  bool get apiEnabled => _isEnabled(apiInterfaceStatus);
 
   PanelSettingsViewState copyWith({
     String? systemIP,
@@ -69,8 +69,8 @@ class PanelSettingsViewState {
       theme: (core['theme'] as String?) ?? 'light',
       language: (core['language'] as String?) ?? 'zh',
       sessionTimeout: int.tryParse('${core['sessionTimeout'] ?? 0}') ?? 0,
-      developerMode: (core['developerMode'] as String?) == 'enable',
-      menuTabs: (core['menuTabs'] as String?) != 'disable',
+      developerMode: _isEnabled(core['developerMode']),
+      menuTabs: !_isDisabled(core['menuTabs']),
       apiInterfaceStatus: (core['apiInterfaceStatus'] as String?) ?? '',
       apiKey: (core['apiKey'] as String?) ?? '',
       ipWhiteList: (core['ipWhiteList'] as String?) ?? '',
@@ -111,3 +111,7 @@ class PanelSettingsViewState {
     }
   }
 }
+
+bool _isEnabled(Object? value) => value.toString().toLowerCase() == 'enable';
+
+bool _isDisabled(Object? value) => value.toString().toLowerCase() == 'disable';
