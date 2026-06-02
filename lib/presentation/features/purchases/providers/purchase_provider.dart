@@ -133,7 +133,6 @@ class PurchaseController extends AsyncNotifier<PurchaseState> {
   static const _legacyLocalUnlockKey = _localUnlockKey;
   static const _lastVerifiedAtKey =
       'purchase.unlimited_servers.last_verified_at';
-  static const _entitlementRefreshInterval = Duration(hours: 24);
   static const _offeringsRefreshInterval = Duration(minutes: 15);
   static const _revenueCatReadTimeout = Duration(seconds: 12);
   static bool _configured = false;
@@ -172,19 +171,14 @@ class PurchaseController extends AsyncNotifier<PurchaseState> {
     if (state.valueOrNull == null) {
       state = AsyncValue.data(current);
     }
-    if (!current.isUnlocked || !_needsEntitlementRefresh(current)) {
-      return current;
-    }
-    return refreshEntitlement(force: false);
+    return current;
   }
 
   Future<PurchaseState> refresh() => refreshEntitlement();
 
   Future<PurchaseState> refreshEntitlement({bool force = true}) {
     final current = state.valueOrNull;
-    if (!force &&
-        current != null &&
-        (!current.isUnlocked || !_needsEntitlementRefresh(current))) {
+    if (current != null && (current.isUnlocked || !force)) {
       return Future.value(current);
     }
 
@@ -204,7 +198,7 @@ class PurchaseController extends AsyncNotifier<PurchaseState> {
     required bool force,
   }) async {
     final current = state.valueOrNull ?? await _loadLocalState();
-    if (!force && !current.isUnlocked) return current;
+    if (current.isUnlocked || !force) return current;
 
     final l10n = ref.read(appLocalizationsProvider);
     final apiKey = RevenueCatConfig.apiKey;
@@ -380,13 +374,6 @@ class PurchaseController extends AsyncNotifier<PurchaseState> {
     return future;
   }
 
-  bool _needsEntitlementRefresh(PurchaseState state) {
-    final lastVerifiedAt = state.lastVerifiedAt;
-    if (lastVerifiedAt == null) return true;
-    return DateTime.now().toUtc().difference(lastVerifiedAt.toUtc()) >=
-        _entitlementRefreshInterval;
-  }
-
   Future<bool> _readLocallyUnlocked(StorageService storage) async {
     final secureValue = await storage.getSecureString(_localUnlockKey);
     if (secureValue != null) return secureValue == 'true';
@@ -419,14 +406,17 @@ class PurchaseController extends AsyncNotifier<PurchaseState> {
     rc.CustomerInfo customerInfo,
     PurchaseState current,
   ) async {
-    final unlocked = _hasUnlimitedServers(customerInfo);
+    final hasUnlimitedServers = _hasUnlimitedServers(customerInfo);
+    final unlocked = current.isUnlocked || hasUnlimitedServers;
     final verifiedAt = DateTime.now().toUtc();
     await _setLocallyUnlocked(unlocked, verifiedAt: verifiedAt);
 
     return current.copyWith(
       isConfigured: true,
       isUnlocked: unlocked,
-      verificationStatus: PurchaseVerificationStatus.verified,
+      verificationStatus: current.isUnlocked && !hasUnlimitedServers
+          ? PurchaseVerificationStatus.localOnly
+          : PurchaseVerificationStatus.verified,
       lastVerifiedAt: verifiedAt,
       clearMessage: true,
     );

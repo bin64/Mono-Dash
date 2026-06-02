@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart' show AdaptiveTextSelectionToolbar;
 import 'package:re_editor/re_editor.dart';
 import 'package:re_highlight/languages/bash.dart';
 import 'package:re_highlight/languages/css.dart';
@@ -65,6 +66,12 @@ const List<String> _kMonoFontFamilyFallback = <String>[
   'monospace',
 ];
 
+final SelectionToolbarController _kEditableCodeSelectionToolbarController =
+    _CodeSelectionToolbarController(readOnly: false);
+
+final SelectionToolbarController _kReadOnlyCodeSelectionToolbarController =
+    _CodeSelectionToolbarController(readOnly: true);
+
 /// 代码编辑器小部件，仅负责编辑视图本身，不关心外壳/导航/保存。
 ///
 /// 典型用法是与 [showAppCodeEditorSheet] 组合；若有定制需求也可单独嵌入页面。
@@ -96,6 +103,9 @@ class AppCodeEditor extends StatelessWidget {
     final bgColor = AppColors.background(context);
     return CodeEditor(
       controller: controller,
+      toolbarController: readOnly
+          ? _kReadOnlyCodeSelectionToolbarController
+          : _kEditableCodeSelectionToolbarController,
       readOnly: readOnly,
       wordWrap: false,
       hint: hint,
@@ -152,6 +162,149 @@ class AppCodeEditor extends StatelessWidget {
     return CodeHighlightTheme(
       languages: {language.toLowerCase(): CodeHighlightThemeMode(mode: mode)},
       theme: isDark ? atomOneDarkTheme : atomOneLightTheme,
+    );
+  }
+}
+
+class _CodeSelectionToolbarController implements SelectionToolbarController {
+  _CodeSelectionToolbarController({required this.readOnly});
+
+  final bool readOnly;
+  OverlayEntry? _entry;
+
+  @override
+  void hide(BuildContext context) {
+    final entry = _entry;
+    if (entry != null) {
+      _removeEntry(entry);
+    }
+  }
+
+  void _removeEntry(OverlayEntry entry) {
+    if (!identical(_entry, entry)) return;
+    _entry = null;
+    entry.remove();
+  }
+
+  @override
+  void show({
+    required BuildContext context,
+    required CodeLineEditingController controller,
+    required TextSelectionToolbarAnchors anchors,
+    Rect? renderRect,
+    required LayerLink layerLink,
+    required ValueNotifier<bool> visibility,
+  }) {
+    hide(context);
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => Positioned.fill(
+        child: _CodeSelectionToolbarOverlay(
+          visibility: visibility,
+          child: _CodeSelectionToolbar(
+            anchors: anchors,
+            controller: controller,
+            readOnly: readOnly,
+            onDismiss: () {
+              _removeEntry(entry);
+            },
+            onRefresh: () {
+              if (identical(_entry, entry)) {
+                entry.markNeedsBuild();
+              }
+            },
+          ),
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    _entry = entry;
+  }
+}
+
+class _CodeSelectionToolbarOverlay extends StatelessWidget {
+  const _CodeSelectionToolbarOverlay({
+    required this.visibility,
+    required this.child,
+  });
+
+  final ValueNotifier<bool> visibility;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CodeEditorTapRegion(
+      child: ValueListenableBuilder<bool>(
+        valueListenable: visibility,
+        child: child,
+        builder: (context, visible, child) {
+          return Visibility(
+            visible: visible,
+            maintainState: true,
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CodeSelectionToolbar extends StatelessWidget {
+  const _CodeSelectionToolbar({
+    required this.anchors,
+    required this.controller,
+    required this.readOnly,
+    required this.onDismiss,
+    required this.onRefresh,
+  });
+
+  final TextSelectionToolbarAnchors anchors;
+  final CodeLineEditingController controller;
+  final bool readOnly;
+  final VoidCallback onDismiss;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final buttonItems = <ContextMenuButtonItem>[
+      if (!readOnly)
+        ContextMenuButtonItem(
+          type: ContextMenuButtonType.cut,
+          onPressed: () {
+            controller.cut();
+            onDismiss();
+          },
+        ),
+      ContextMenuButtonItem(
+        type: ContextMenuButtonType.copy,
+        onPressed: () {
+          controller.copy();
+          onDismiss();
+        },
+      ),
+      if (!readOnly)
+        ContextMenuButtonItem(
+          type: ContextMenuButtonType.paste,
+          onPressed: () {
+            controller.paste();
+            onDismiss();
+          },
+        ),
+      ContextMenuButtonItem(
+        type: ContextMenuButtonType.selectAll,
+        onPressed: () {
+          controller.selectAll();
+          onRefresh();
+        },
+      ),
+    ];
+
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      buttonItems: buttonItems,
+      anchors: anchors,
     );
   }
 }
